@@ -4,28 +4,35 @@ function flappybird
 GameVer = '1.0';          % The first full playable game
 
 %% Constant Definitions:
-GAME.MAX_FRAME_SKIP = [];
 
-GAME.RESOLUTION = [];       % Game Resolution, default at [256 144]
+GAME.RESOLUTION = [256 144];       % Game Resolution, default at [256 144]
 GAME.WINDOW_SCALE = 2;     % The actual size of the window divided by resolution
-GAME.FLOOR_TOP_Y = [];      % The y position of upper crust of the floor.
-GAME.N_UPDATES_PER_SEC = [];
-GAME.FRAME_DURATION = [];
+GAME.N_UPDATE_PERSEC = 60;
+GAME.FRAME_DURATION = 1/GAME.N_UPDATE_PERSEC;
 GAME.GRAVITY = 0.1356; %0.15; %0.2; %1356;  % empirical gravity constant
-      
-TUBE.MIN_HEIGHT = [];       % The minimum height of a tube
-TUBE.RANGE_HEIGHT = [];     % The range of the height of a tube
-TUBE.SUM_HEIGHT = [];       % The summed height of the upper and low tube
-TUBE.H_SPACE = [];           % Horizontal spacing between two tubs
-TUBE.V_SPACE = [];           % Vertical spacing between two tubs
-TUBE.WIDTH   = [];            % The 'actual' width of the detection box
+GAME.MAX_FRAME_SKIP = 5;
+GAME.WINDOW_RES = [256 144];
+GAME.FLOOR_HEIGHT = 6;
+GAME.FLOOR_TOP_Y = GAME.RESOLUTION(1) - GAME.FLOOR_HEIGHT + 1;% The y position of upper crust of the floor.
 
-GAMEPLAY.RIGHT_X_FIRST_TUBE = [];  % Xcoord of the right edge of the 1st tube
+TUBE.H_SPACE = 80;           % Horizontal spacing between two tubs
+TUBE.V_SPACE = 48;           % Vertical spacing between two tubs
+TUBE.WIDTH   = 24;            % The 'actual' width of the detection box
+TUBE.MIN_HEIGHT = 36;% The minimum height of a tube
+
+TUBE.SUM_HEIGHT = GAME.RESOLUTION(1)-TUBE.V_SPACE-...
+    GAME.FLOOR_HEIGHT;% The summed height of the upper and low tube
+TUBE.RANGE_HEIGHT = TUBE.SUM_HEIGHT -TUBE.MIN_HEIGHT*2;% The range of the height of a tube
+
+TUBE.PASS_POINT = [1 44];
+
+
+GAMEPLAY.RIGHT_X_FIRST_TUBE = 300;  % Xcoord of the right edge of the 1st tube
 
 ShowFPS = true;
-SHOWFPS_FRAMES = 5;
+SHOWFPS_FRAMES = 20;
 %% Handles
-MainFigureHdl = [];
+MainFigHdl = [];
 MainAxesHdl = [];
 MainCanvasHdl = [];
 BirdSpriteHdl = [];
@@ -35,11 +42,14 @@ FloorSpriteHdl = [];
 ScoreInfoHdl = [];
 GameOverHdl = [];
 FloorAxesHdl = [];
+
 %% Game Parameters
-MainFigureInitPos = [];
-MainFigureSize = [];
-MainAxesInitPos = []; % The initial position of the axes IN the figure
-MainAxesSize = [];
+MainFigureInitPos = [500 100]; % game window's initial position
+MainFigureSize = GAME.WINDOW_RES([2 1]).*2;
+MainAxesInitPos = [0 0]; %[0.1 0.1]; % The initial position of the axes IN the figure
+MainAxesSize = [144 200]; % GAME.WINDOW_RES([2 1]);
+FloorAxesSize = [144 56];
+
 
 InGameParams.CurrentBkg = 1;
 InGameParams.CurrentBird = 1;
@@ -53,7 +63,7 @@ CloseReq = false;
 
 FlyKeyNames = {'space', 'return', 'uparrow', 'w'};
 FlyKeyStatus = false; %(size(FlyKeyNames));
-FlyKeyValid = true(size(FlyKeyNames));      % 
+FlyKeyValid = true(size(FlyKeyNames));      %
 %% Canvases:
 MainCanvas = [];
 
@@ -70,8 +80,8 @@ Bird.COLLIDE_MASK = [];
 Bird.INIT_SCREEN_POS = [45 100];                    % In [x y] order;
 Bird.WorldX = [];
 Bird.ScreenPos = [45 100]; %[45 100];   % Center = The 9th element horizontally (1based)
-                                     % And the 6th element vertically 
-Bird.SpeedXY = [ 0];
+% And the 6th element vertically
+% Bird.SpeedXY = [ 0];
 Bird.Angle = 0;
 Bird.XGRID = [];
 Bird.YGRID = [];
@@ -87,10 +97,11 @@ Score = 0;
 
 Tubes.FrontP = 1;              % 1-3
 Tubes.ScreenX = [300 380 460]-2; % The middle of each tube
-Tubes.VOffset = ceil(rand(1,3)*105); 
+Tubes.VOffset = ceil(rand(1,3)*105);
 
 Best = 0;
 %% -- Game Logic --
+
 initVariables();
 initWindow();
 
@@ -103,217 +114,185 @@ end
 % Show flash screen
 CurrentFrameNo = double(0);
 
-fade_time = cumsum([1 3 1]);
+% fade_time = cumsum([1 3 1]);
 
-pause(0.5);
-logo_stl = text(72, 100, 'Stellari Studio', 'FontSize', 20, 'Color',[1 1 1], 'HorizontalAlignment', 'center');
-logo_and = text(72, 130, 'and', 'FontSize', 10, 'Color',[1 1 1], 'HorizontalAlignment', 'center');
-logo_ilovematlabcn = image([22 122], [150 180], Sprites.MatlabLogo, 'AlphaData',0);
-stageStartTime = tic;
-while 1
-    loops = 0;
-    curTime = toc(stageStartTime);
-    while (curTime >= ((CurrentFrameNo) * GAME.FRAME_DURATION) && loops < GAME.MAX_FRAME_SKIP)
-        if curTime < fade_time(1)
-            set(logo_stl, 'Color',1 - [1 1 1].*max(min(curTime/fade_time(1), 1),0));
-            set(logo_ilovematlabcn, 'AlphaData', max(min(curTime/fade_time(1), 1),0));
-            set(logo_and, 'Color',1 - [1 1 1].*max(min(curTime/fade_time(1), 1),0));
-        elseif curTime < fade_time(2)
-            set(logo_stl, 'Color',[0 0 0]);
-            set(logo_ilovematlabcn, 'AlphaData', 1);
-            set(logo_and, 'Color', [0 0 0]);
-        else
-            set(logo_stl, 'Color',[1 1 1].*max(min((curTime-fade_time(2))/(fade_time(3) - fade_time(2)), 1),0));
-            set(logo_ilovematlabcn, 'AlphaData',1-max(min((curTime-fade_time(2))/(fade_time(3) - fade_time(2)), 1),0));
-            set(logo_and, 'Color', [1 1 1].*max(min((curTime-fade_time(2))/(fade_time(3) - fade_time(2)), 1),0));
-        end
-        CurrentFrameNo = CurrentFrameNo + 1;
-       loops = loops + 1;
-       frame_updated = true;
-    end
-    if frame_updated
-        drawnow;
-    end
-    if curTime > fade_time
-        break;
-    end
-end
-delete(logo_stl);
-delete(logo_ilovematlabcn);
-delete(logo_and);
-pause(1);
+% pause(0.5);
+% logo_stl = text(72, 100, 'Stellari Studio', 'FontSize', 20, 'Color',[1 1 1], 'HorizontalAlignment', 'center');
+% logo_and = text(72, 130, 'and', 'FontSize', 10, 'Color',[1 1 1], 'HorizontalAlignment', 'center');
+% logo_ilovematlabcn = image([22 122], [150 180], Sprites.MatlabLogo, 'AlphaData',0);
+% stageStartTime = tic;
+% while 1
+%     loops = 0;
+%     curTime = toc(stageStartTime);
+%     while (curTime >= ((CurrentFrameNo) * GAME.FRAME_DURATION) && loops < GAME.MAX_FRAME_SKIP)
+%         if curTime < fade_time(1)
+%             set(logo_stl, 'Color',1 - [1 1 1].*max(min(curTime/fade_time(1), 1),0));
+%             set(logo_ilovematlabcn, 'AlphaData', max(min(curTime/fade_time(1), 1),0));
+%             set(logo_and, 'Color',1 - [1 1 1].*max(min(curTime/fade_time(1), 1),0));
+%         elseif curTime < fade_time(2)
+%             set(logo_stl, 'Color',[0 0 0]);
+%             set(logo_ilovematlabcn, 'AlphaData', 1);
+%             set(logo_and, 'Color', [0 0 0]);
+%         else
+%             set(logo_stl, 'Color',[1 1 1].*max(min((curTime-fade_time(2))/(fade_time(3) - fade_time(2)), 1),0));
+%             set(logo_ilovematlabcn, 'AlphaData',1-max(min((curTime-fade_time(2))/(fade_time(3) - fade_time(2)), 1),0));
+%             set(logo_and, 'Color', [1 1 1].*max(min((curTime-fade_time(2))/(fade_time(3) - fade_time(2)), 1),0));
+%         end
+%         CurrentFrameNo = CurrentFrameNo + 1;
+%         loops = loops + 1;
+%         frame_updated = true;
+%     end
+%     if frame_updated
+%         drawnow;
+%     end
+%     if curTime > fade_time
+%         break;
+%     end
+% end
+% delete(logo_stl);
+% delete(logo_ilovematlabcn);
+% delete(logo_and);
+% pause(1);
 
 % Main Game
 while 1
-initGame();
-CurrentFrameNo = double(0);
-collide = false;
-fall_to_bottom = false;
-gameover = false;
-stageStartTime = tic;
-c = stageStartTime;
-FPS_lastTime = toc(stageStartTime);
-while 1
-    loops = 0;
-    curTime = toc(stageStartTime);
-    while (curTime >= ((CurrentFrameNo) * GAME.FRAME_DURATION) && loops < GAME.MAX_FRAME_SKIP)
-        
-        if FlyKeyStatus  % If left key is pressed     
-            if ~gameover
-                Bird.SpeedY = -2.5; % -2.5;
-                FlyKeyStatus = false;
-                Bird.LastHeight = Bird.ScreenPos(2);
-                if Flags.PreGame
-                    Flags.PreGame = false;                    
-                    set(BeginInfoHdl, 'Visible','off');
-                    set(ScoreInfoBackHdl, 'Visible','on');
-                    set(ScoreInfoForeHdl, 'Visible','on');
-                    Bird.ScrollX = 0;
-                end
-            else
-                if Bird.SpeedY < 0
-                    Bird.SpeedY = 0;
-                end
-            end
-        end
-        if Flags.PreGame
-            processCPUBird;
-        else
-            processBird;
-            Bird.ScrollX = Bird.ScrollX + 1;
-            if ~gameover
-                scrollTubes(1);
-            end
-        end
-        addScore;
-        Bird.CurFrame = 3 - floor(double(mod(CurrentFrameNo, 9))/3);
-
-      %% Cycling the Palette
-        % Update the cycle variables
-       collide = isCollide();
-       if collide
-           gameover = true;
-       end
-       CurrentFrameNo = CurrentFrameNo + 1;
-       loops = loops + 1;
-       frame_updated = true;
-       
-       % If the bird has fallen to the ground
-       if Bird.ScreenPos(2) >= 200-5;
-            Bird.ScreenPos(2) = 200-5;
-            gameover = true;
-            if abs(Bird.Angle - pi/2) < 1e-3
-                fall_to_bottom = true;
-                FlyKeyStatus = false;
-            end
-       end
-
-    end
-    
-    %% Redraw the frame if the world has been processed
-    if frame_updated
-%         drawToMainCanvas();
-        set(MainCanvasHdl, 'CData', MainCanvas(1:200,:,:));
-%         Bird.Angle = double(mod(CurrentFrameNo,360))*pi/180;
-        if fall_to_bottom
-            Bird.CurFrame = 2;
-        end
-        refreshBird();
-        refreshTubes();
-        if (~gameover)
-            refreshFloor(CurrentFrameNo);
-        end
-        curScoreString = sprintf('%d',(Score));
-        set(ScoreInfoForeHdl, 'String', curScoreString);
-        set(ScoreInfoBackHdl, 'String', curScoreString);
-        drawnow;
-        frame_updated = false;
-        c = toc(stageStartTime);
-        if ShowFPS
-            total_frame_update = total_frame_update + 1;
-            varname = 'collide';%'Mario.curFrame';
-            if mod(total_frame_update,SHOWFPS_FRAMES) == 0 % If time to update fps
-                set(fps_text_handle, 'String',sprintf('FPS: %.2f',SHOWFPS_FRAMES./(c-FPS_lastTime)));
-                FPS_lastTime = toc(stageStartTime);
-            end
-            set(var_text_handle, 'String', sprintf('%s = %.2f', varname, eval(varname)));
-        end
-    end
-    if fall_to_bottom
-        if Score > Best
-            Best = Score;
+    initGame();
+    CurrentFrameNo = double(0);
+    collide = false;
+    fall_to_bottom = false;
+    gameover = false;
+    stageStartTime = tic;
+    FPS_lastTime = toc(stageStartTime);
+    while true
+        loops = 0;
+        curTime = toc(stageStartTime);
+        while (curTime >= ((CurrentFrameNo) * GAME.FRAME_DURATION) && loops < GAME.MAX_FRAME_SKIP)
             
-            for i_save = 1:4     % Try saving four times if error occurs
-                try
-                    save sprites2.mat Best -append
-                    break;
-                catch
-                    continue;
+            if FlyKeyStatus  % If left key is pressed
+                if ~gameover
+                    Bird.SpeedY = -2.5; % -2.5;
+                    FlyKeyStatus = false;
+                    Bird.LastHeight = Bird.ScreenPos(2);
+                    if Flags.PreGame
+                        Flags.PreGame = false;
+                        set(BeginInfoHdl, 'Visible','off');
+                        set(ScoreInfoBackHdl, 'Visible','on');
+                        set(ScoreInfoForeHdl, 'Visible','on');
+                        Bird.ScrollX = 0;
+                    end
+                else
+                    if Bird.SpeedY < 0
+                        Bird.SpeedY = 0;
+                    end
                 end
-            end     % If the error still persist even after four saves, then
-            if i_save == 4
-                disp('FLAPPY_BIRD: Can''t save high score'); 
+            end
+            if Flags.PreGame
+                processCPUBird;
+            else
+                processBird;
+                Bird.ScrollX = Bird.ScrollX + 1;
+                if ~gameover
+                    scrollTubes(1);
+                end
+            end
+            addScore();
+            Bird.CurFrame = 3 - floor(double(mod(CurrentFrameNo, 9))/3);
+            
+            % Cycling the Palette
+            % Update the cycle variables
+            collide = isCollide();
+            if collide
+                gameover = true;
+            end
+            CurrentFrameNo = CurrentFrameNo + 1;
+            loops = loops + 1;
+            frame_updated = true;
+            
+            % If the bird has fallen to the ground
+            if Bird.ScreenPos(2) >= 200-5;
+                Bird.ScreenPos(2) = 200-5;
+                gameover = true;
+                if abs(Bird.Angle - pi/2) < 1e-3
+                    fall_to_bottom = true;
+                    FlyKeyStatus = false;
+                end
+            end
+            
+        end
+        
+        % Redraw the frame if the world has been processed
+        if frame_updated
+            %         drawToMainCanvas();
+            set(MainCanvasHdl, 'CData', MainCanvas(1:200,:,:));
+            %         Bird.Angle = double(mod(CurrentFrameNo,360))*pi/180;
+            if fall_to_bottom
+                Bird.CurFrame = 2;
+            end
+            refreshBird();
+            refreshTubes();
+            if (~gameover)
+                refreshFloor(CurrentFrameNo);
+            end
+            curScoreString = sprintf('%d',(Score));
+            set(ScoreInfoForeHdl, 'String', curScoreString);
+            set(ScoreInfoBackHdl, 'String', curScoreString);
+            drawnow;
+            frame_updated = false;
+            c = toc(stageStartTime);
+            if ShowFPS
+                total_frame_update = total_frame_update + 1;
+                varname = 'collide';
+                if mod(total_frame_update,SHOWFPS_FRAMES) == 0 % If time to update fps
+                    set(fps_text_handle, 'String',sprintf('FPS: %.1f',SHOWFPS_FRAMES./(c-FPS_lastTime)));
+                    FPS_lastTime = toc(stageStartTime);
+                end
+                set(var_text_handle, 'String', sprintf('%s = %.2f', varname, eval(varname)));
             end
         end
-        score_report = {sprintf('Score: %d', Score), sprintf('Best: %d', Best)};
-        set(ScoreInfoHdl, 'Visible','on', 'String', score_report);
-        set(GameOverHdl, 'Visible','on');
-        save sprites2.mat Best -append
-        if FlyKeyStatus
-            FlyKeyStatus = false;
-            break;
+        if fall_to_bottom
+            %             if Score > Best
+            %                 Best = Score;
+            %
+            %                 for i_save = 1:4     % Try saving four times if error occurs
+            %                     try
+            %                         save sprites2.mat Best -append
+            %                         break;
+            %                     catch
+            %                         continue;
+            %                     end
+            %                 end     % If the error still persist even after four saves, then
+            %                 if i_save == 4
+            %                     disp('FLAPPY_BIRD: Can''t save high score');
+            %                 end
+            %             end
+            score_report = {sprintf('Score: %d', Score), sprintf('Best: %d', Best)};
+            set(ScoreInfoHdl, 'Visible','on', 'String', score_report);
+            set(GameOverHdl, 'Visible','on');
+            %             save sprites2.mat Best -append
+            if FlyKeyStatus
+                FlyKeyStatus = false;
+                break;
+            end
+        end
+        
+        if CloseReq
+            delete(MainFigHdl);
+            clear all;
+            return;
         end
     end
-       
-    if CloseReq    
-        delete(MainFigureHdl);
-        clear all;
-        return;
-    end
-end
 end
     function initVariables()
-        Sprites = load('sprites2.mat');
-        GAME.MAX_FRAME_SKIP = 5;
-        GAME.RESOLUTION = [256 144];
-        GAME.WINDOW_RES = [256 144];
-        GAME.FLOOR_HEIGHT = 56;
-        GAME.FLOOR_TOP_Y = GAME.RESOLUTION(1) - GAME.FLOOR_HEIGHT + 1;
-        GAME.N_UPDATE_PERSEC = 60;
-        GAME.FRAME_DURATION = 1/GAME.N_UPDATE_PERSEC;
         
-        TUBE.H_SPACE = 80;           % Horizontal spacing between two tubs
-        TUBE.V_SPACE = 48;           % Vertical spacing between two tubs
-        TUBE.WIDTH   = 24;            % The 'actual' width of the detection box
-        TUBE.MIN_HEIGHT = 36;
         
-        TUBE.SUM_HEIGHT = GAME.RESOLUTION(1)-TUBE.V_SPACE-...
-            GAME.FLOOR_HEIGHT;
-        TUBE.RANGE_HEIGHT = TUBE.SUM_HEIGHT -TUBE.MIN_HEIGHT*2;
-        
-        TUBE.PASS_POINT = [1 44];
-        
-        %TUBE.RANGE_HEIGHT_DOWN;      % Sorry you just don't have a choice
-        GAMEPLAY.RIGHT_X_FIRST_TUBE = 300;  % Xcoord of the right edge of the 1st tube
-        
-        %% Handles
-        MainFigureHdl = [];
-        MainAxesHdl = [];
-        
-        %% Game Parameters
-        MainFigureInitPos = [500 100];
-        MainFigureSize = GAME.WINDOW_RES([2 1]).*2;
-        MainAxesInitPos = [0 0]; %[0.1 0.1]; % The initial position of the axes IN the figure
-        MainAxesSize = [144 200]; % GAME.WINDOW_RES([2 1]);
-        FloorAxesSize = [144 56];
         %% Canvases:
         MainCanvas = uint8(zeros([GAME.RESOLUTION 3]));
-                
+        Sprites = load('sprites2.mat');
         bird_size = Sprites.Bird.Size;
         [Bird.XGRID, Bird.YGRID] = meshgrid([-ceil(bird_size(2)/2):floor(bird_size(2)/2)], ...
             [ceil(bird_size(1)/2):-1:-floor(bird_size(1)/2)]);
         Bird.COLLIDE_MASK = false(12,12);
-        [tempx tempy] = meshgrid(linspace(-1,1,12));
+        [tempx, tempy] = meshgrid(linspace(-1,1,12));
         Bird.COLLIDE_MASK = (tempx.^2 + tempy.^2) <= 1;
         
         
@@ -327,7 +306,7 @@ end
 %% --- Graphics Section ---
     function initWindow()
         % initWindow - initialize the main window, axes and image objects
-        MainFigureHdl = figure('Name', ['Flappy Bird ' GameVer], ...
+        MainFigHdl = figure('Name', ['Flappy Bird ' GameVer], ...
             'NumberTitle' ,'off', ...
             'Units', 'pixels', ...
             'Position', [MainFigureInitPos, MainFigureSize], ...
@@ -338,7 +317,7 @@ end
             'WindowKeyPressFcn', @stl_KeyDown,...
             'WindowKeyReleaseFcn', @stl_KeyUp,...
             'CloseRequestFcn', @stl_CloseReqFcn);
-        FloorAxesHdl = axes('Parent', MainFigureHdl, ...
+        FloorAxesHdl = axes('Parent', MainFigHdl, ...
             'Units', 'normalized',...
             'Position', [MainAxesInitPos, (1-MainAxesInitPos.*2) .* [1 56/256]], ...
             'color', [1 1 1], ...
@@ -346,9 +325,9 @@ end
             'YLim', [0 56]-0.5, ...
             'YDir', 'reverse', ...
             'NextPlot', 'add', ...
-            'Visible', 'on',...
+            'Visible', 'off',...
             'XTick',[], 'YTick', []);
-        MainAxesHdl = axes('Parent', MainFigureHdl, ...
+        MainAxesHdl = axes('Parent', MainFigHdl, ...
             'Units', 'normalized',...
             'Position', [MainAxesInitPos + [0 (1-MainAxesInitPos(2).*2)*56/256], (1-MainAxesInitPos.*2).*[1 200/256]], ...
             'color', [1 1 1], ...
@@ -356,7 +335,7 @@ end
             'YLim', [0 MainAxesSize(2)]-0.5, ...
             'YDir', 'reverse', ...
             'NextPlot', 'add', ...
-            'Visible', 'on', ...
+            'Visible', 'off', ...
             'XTick',[], ...
             'YTick',[]);
         
@@ -364,16 +343,13 @@ end
         MainCanvasHdl = image([0 MainAxesSize(1)-1], [0 MainAxesSize(2)-1], [],...
             'Parent', MainAxesHdl,...
             'Visible', 'on');
-        TubeSpriteHdl = zeros(1,3);
         for i = 1:3
             TubeSpriteHdl(i) = image([0 26-1], [0 304-1], [],...
-            'Parent', MainAxesHdl,...
-            'Visible', 'on');
+                'Parent', MainAxesHdl,...
+                'Visible', 'on');
         end
         
-        
-        
-        BirdSpriteHdl = surface(Bird.XGRID-100,Bird.YGRID-100, ...
+        BirdSpriteHdl = surface(Bird.XGRID+10,Bird.YGRID+10, ...
             zeros(size(Bird.XGRID)), Sprites.Bird.CDataNan(:,:,:,1), ...
             'CDataMapping', 'direct',...
             'EdgeColor','none', ...
@@ -395,19 +371,19 @@ end
             'FontName', 'Helvetica', 'FontSize', 20, 'FontWeight', 'Bold', 'HorizontalAlignment', 'center','Color',[1 1 1], 'Visible', 'off');
     end
     function initGame()
-                % The scroll layer for the tubes
+        % The scroll layer for the tubes
         TubeLayer.Alpha = false([GAME.RESOLUTION.*[1 2] 3]);
         TubeLayer.CData = uint8(zeros([GAME.RESOLUTION.*[1 2] 3]));
-
+        
         Bird.Angle = 0;
         Score = 0;
         %TubeLayer.Alpha(GAME.FLOOR_TOP_Y:GAME.RESOLUTION(1), :, :) = true;
         Flags.ResetFloorTexture = true;
         SinYPos = 1;
         Flags.PreGame = true;
-%         scrollTubeLayer(GAME.RESOLUTION(2));   % Do it twice to fill the
-%         disp('mhaha');
-%         scrollTubeLayer(GAME.RESOLUTION(2));   % Entire tube layer
+        %         scrollTubeLayer(GAME.RESOLUTION(2));   % Do it twice to fill the
+        %         disp('mhaha');
+        %         scrollTubeLayer(GAME.RESOLUTION(2));   % Entire tube layer
         drawToMainCanvas();
         set(MainCanvasHdl, 'CData', MainCanvas);
         set(BeginInfoHdl, 'Visible','on');
@@ -478,7 +454,7 @@ end
             set(TubeSpriteHdl(i), 'XData', Tubes.ScreenX(i) + [0 26-1]);
         end
     end
-    
+
     function refreshFloor(frameNo)
         offset = mod(frameNo, 24);
         set(FloorSpriteHdl, 'XData', -offset);
@@ -503,9 +479,8 @@ end
         if Bird.ScreenPos(2) < GapY(1)+4 || Bird.ScreenPos(2) > GapY(2)-4
             collide_flag = 1;
         end
-        return;
     end
-    
+
     function addScore()
         if Tubes.ScreenX(Tubes.FrontP) < 40 && Flags.NextTubeReady
             Flags.NextTubeReady = false;
@@ -527,8 +502,8 @@ end
             'CData', Sprites.Bird.CDataNan(:,:,:, Bird.CurFrame));
     end
 %% -- Display Infos --
-    
-        
+
+
 %% -- Callbacks --
     function stl_KeyUp(hObject, eventdata, handles)
         key = get(hObject,'CurrentKey');
@@ -547,8 +522,8 @@ end
     function stl_KeyPressFcn(hObject, eventdata, handles)
         curKey = get(hObject, 'CurrentKey');
         switch true
-            case strcmp(curKey, 'escape') 
-                CloseReq = true;            
+            case strcmp(curKey, 'escape')
+                CloseReq = true;
         end
     end
     function stl_CloseReqFcn(hObject, eventdata, handles)
